@@ -6,44 +6,23 @@ import { Suspense } from "react";
 import { useEffect } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-const questions = [
-  {
-    title: "Tell me about yourself.",
-    description:
-      "Please share a brief overview of your background, skills and what motivated you to apply for this role.",
-    tip: "Be concise and highlight your relevant experience.",
-  },
-  {
-    title: "What are your greatest strengths?",
-    description:
-      "Describe the skills or qualities that make you a strong candidate for this position.",
-    tip: "Support your strengths with real examples.",
-  },
-  {
-    title: "Tell me about a challenging project you worked on.",
-    description:
-      "Explain the challenge, how you approached it, and what you learned from the experience.",
-    tip: "Focus on your actions and the results.",
-  },
-  {
-    title: "How do you handle tight deadlines?",
-    description:
-      "Describe how you prioritize tasks and maintain quality when working under pressure.",
-    tip: "Give an example from your experience.",
-  },
-  {
-    title: "Why should we hire you?",
-    description:
-      "Explain what makes you a suitable candidate and how you can contribute to this role.",
-    tip: "Connect your skills to the job requirements.",
-  },
-];
+// const questions = questions[currentQuestion];
+// const progress =
+//   questionsFromBackend.length > 0
+//     ? ((currentQuestion + 1) / questionsFromBackend.length) * 100
+//     : 0;
+  
 
  function InterviewWorkspaceContent() {
     const searchParams = useSearchParams();
+
 const role = searchParams.get("role") || "Software Engineer";
 const interviewType = searchParams.get("type") || "Technical";
 const difficulty = searchParams.get("difficulty") || "Intermediate";
+const [currentQuestion, setCurrentQuestion] = useState(0);
+const [backendResponse, setBackendResponse] = useState(null);
+const [backendError, setBackendError] = useState("");
+const [questionsFromBackend, setQuestionsFromBackend] = useState([]);
 
 
 useEffect(() => {
@@ -66,8 +45,12 @@ useEffect(() => {
       }
 
       const data = await response.json();
+      console.log("First question:", data.questions[0]);
+console.log("First question type:", typeof data.questions[0]);
+      
 
       setBackendResponse(data);
+      setQuestionsFromBackend(data.questions);
     } catch (error) {
       setBackendError(error.message);
     }
@@ -75,26 +58,43 @@ useEffect(() => {
 
   startInterview();
 }, [role, interviewType, difficulty]);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
 
-  const question = questions[currentQuestion];
-  const progress = ((currentQuestion + 1) / questions.length) * 100;
-
+  const question = questionsFromBackend[currentQuestion];
+const progress =
+  questionsFromBackend.length > 0
+    ? ((currentQuestion + 1) / questionsFromBackend.length) * 100
+    : 0;
   function toggleRecording() {
     setIsListening(!isListening);
   }
 
   function nextQuestion() {
-    setIsListening(false);
+  setIsListening(false);
 
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1);
-    } else {
-      setIsFinished(true);
-    }
+  if (currentQuestion < questionsFromBackend.length - 1) {
+    setCurrentQuestion(currentQuestion + 1);
+  } else {
+    setIsFinished(true);
   }
+}
+if (backendError) {
+  return (
+    <main className="min-h-screen bg-[#090611] p-10 text-white">
+      <h1 className="text-xl text-red-400">Backend Error</h1>
+      <p>{backendError}</p>
+    </main>
+  );
+}
+
+if (!backendResponse || questionsFromBackend.length === 0) {
+  return (
+    <main className="min-h-screen bg-[#090611] p-10 text-white">
+      <p className="text-purple-300">Loading interview questions...</p>
+    </main>
+  );
+}
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#090611] text-white">
@@ -122,11 +122,11 @@ useEffect(() => {
 
           <div>
             <p className="text-sm text-purple-300">
-              Question {currentQuestion + 1} / {questions.length}
+              Question {currentQuestion + 1} of {questionsFromBackend.length}
             </p>
 
             <div className="mt-2 flex gap-1">
-              {questions.map((_, index) => (
+              {questionsFromBackend.map((_, index) => (
                 <div
                   key={index}
                   className={`h-1.5 w-7 rounded-full ${
@@ -261,7 +261,7 @@ useEffect(() => {
               onClick={nextQuestion}
               className="mt-7 w-full rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 py-4 font-semibold shadow-lg shadow-purple-600/20 transition hover:-translate-y-1 hover:shadow-purple-500/30"
             >
-              {currentQuestion === questions.length - 1
+              {currentQuestion === questionsFromBackend.length - 1
                 ? "Finish Interview"
                 : "Next Question →"}
             </button>
@@ -289,7 +289,7 @@ useEffect(() => {
             </div>
 
             <p className="mt-4 text-sm text-gray-400">
-              {currentQuestion + 1} of {questions.length} questions
+              {currentQuestion + 1} of {questionsFromBackend.length} questions
             </p>
           </div>
 
@@ -368,7 +368,7 @@ useEffect(() => {
       )}
     </main>
   );
-}
+ }
 export default function InterviewWorkspace() {
   return (
     <Suspense
