@@ -95,7 +95,7 @@ export default function Home() {
 
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <a
-              href="#features"
+              href="/interview/setup"
               className="group rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 px-7 py-4 text-sm font-semibold shadow-lg shadow-purple-600/25 transition hover:-translate-y-1 hover:shadow-purple-500/40"
             >
               Start Practicing
