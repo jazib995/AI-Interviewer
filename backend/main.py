@@ -1,5 +1,6 @@
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(
@@ -12,9 +13,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+allow_credentials=True,
+allow_methods=["*"],
+allow_headers=["*"],
 )
 
 
@@ -27,7 +28,19 @@ def home():
 
 
 @app.get("/health")
-def health_check():
+class InterviewRequest(BaseModel):
+    role: str
+    interview_type: str
+    difficulty: str
+
+
+# Start a new interview
+@app.post("/interview/start")
+def start_interview(request: InterviewRequest):
     return {
-        "status": "healthy"
+        "message": "Interview configuration received!",
+        "role": request.role,
+        "interview_type": request.interview_type,
+        "difficulty": request.difficulty,
+        "question": "Tell me about yourself."
     }

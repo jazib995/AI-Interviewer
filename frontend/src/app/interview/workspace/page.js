@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { Suspense } from "react";
+import { useEffect } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 const questions = [
@@ -43,6 +44,37 @@ const questions = [
 const role = searchParams.get("role") || "Software Engineer";
 const interviewType = searchParams.get("type") || "Technical";
 const difficulty = searchParams.get("difficulty") || "Intermediate";
+
+
+useEffect(() => {
+  async function startInterview() {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/interview/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          role: role,
+          interview_type: interviewType,
+          difficulty: difficulty,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to connect to backend");
+      }
+
+      const data = await response.json();
+
+      setBackendResponse(data);
+    } catch (error) {
+      setBackendError(error.message);
+    }
+  }
+
+  startInterview();
+}, [role, interviewType, difficulty]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [isListening, setIsListening] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
@@ -84,6 +116,7 @@ const difficulty = searchParams.get("difficulty") || "Intermediate";
 
           <div className="hidden rounded-full border border-purple-400/20 bg-purple-500/10 px-5 py-2 sm:block">
             <span className="text-sm text-gray-400">Time Left</span>
+            
             <span className="ml-3 font-semibold">25:00</span>
           </div>
 
