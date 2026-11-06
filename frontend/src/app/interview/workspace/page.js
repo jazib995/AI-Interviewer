@@ -57,6 +57,7 @@ function InterviewWorkspaceContent() {
   const [isListening, setIsListening] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [answer, setAnswer] = useState("");
+  const [submittedAnswers, setSubmittedAnswers] = useState([]);
   const [speechError, setSpeechError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionMessage, setSubmissionMessage] = useState("");
@@ -149,17 +150,83 @@ function InterviewWorkspaceContent() {
         throw new Error("Failed to submit answer.");
       }
 
-      const data = await response.json();
+      await response.json();
 
-      console.log("Submission response:", data);
+      const updatedAnswers = [
+        ...submittedAnswers,
+        {
+          role: role,
+          question: question.title,
+          answer: answer,
+        },
+      ];
 
-      setSubmissionMessage("Answer submitted successfully!");
+      setSubmittedAnswers(updatedAnswers);
+
+      if (currentQuestion === questionsFromBackend.length - 1) {
+        const completeResponse = await fetch(
+          "http://127.0.0.1:8000/interview/submit-complete",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              role: role,
+              interview_type: interviewType,
+              difficulty: difficulty,
+              answers: updatedAnswers,
+            }),
+          },
+        );
+
+        if (!completeResponse.ok) {
+          throw new Error("Failed to submit complete interview.");
+        }
+
+        const completeData = await completeResponse.json();
+
+        console.log("Complete interview:", completeData);
+
+        setSubmissionMessage("Interview submitted successfully!");
+      } else {
+        setSubmissionMessage("Answer submitted successfully!");
+      }
 
       nextQuestion();
     } catch (error) {
       setSubmissionMessage(error.message);
     } finally {
       setIsSubmitting(false);
+    }
+  }
+  async function submitCompleteInterview() {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/interview/submit-complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            role: role,
+            interview_type: interviewType,
+            difficulty: difficulty,
+            answers: submittedAnswers,
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to submit complete interview.");
+      }
+
+      const data = await response.json();
+
+      console.log("Complete interview response:", data);
+    } catch (error) {
+      console.error(error);
     }
   }
 
@@ -449,20 +516,46 @@ function InterviewWorkspaceContent() {
       {/* Interview finished overlay */}
       {isFinished && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-6 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-3xl border border-purple-400/30 bg-[#160e29] p-10 text-center shadow-2xl shadow-purple-950">
-            <div className="text-5xl">✦</div>
+          <div className="w-full max-w-2xl rounded-3xl border border-purple-400/30 bg-[#160e29] p-8 text-white shadow-2xl shadow-purple-950">
+            <div className="text-center">
+              <div className="text-5xl">✦</div>
 
-            <h2 className="mt-6 text-2xl font-bold">Interview Completed!</h2>
+              <h2 className="mt-6 text-2xl font-bold">Interview Completed!</h2>
 
-            <p className="mt-4 text-sm leading-7 text-gray-400">
-              Great work! You've completed this sample interview. Your
-              AI-generated feedback will appear here once we connect the AI
-              evaluation system.
-            </p>
+              <p className="mt-3 text-sm text-gray-400">
+                Great work! You've completed your interview.
+              </p>
+
+              <div className="mt-6 rounded-xl bg-purple-500/10 p-4">
+                <p className="text-sm text-purple-300">Questions Answered</p>
+                <p className="mt-1 text-3xl font-bold">
+                  {submittedAnswers.length} / {questionsFromBackend.length}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8 max-h-64 space-y-4 overflow-y-auto">
+              {submittedAnswers.map((item, index) => (
+                <div
+                  key={index}
+                  className="rounded-xl border border-purple-400/20 bg-white/5 p-4"
+                >
+                  <h3 className="font-semibold text-purple-300">
+                    Question {index + 1}
+                  </h3>
+
+                  <p className="mt-2 text-sm text-white">{item.question}</p>
+
+                  <p className="mt-3 text-sm leading-6 text-gray-400">
+                    {item.answer}
+                  </p>
+                </div>
+              ))}
+            </div>
 
             <a
               href="/interview/setup"
-              className="mt-8 block rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 py-4 font-semibold"
+              className="mt-8 block rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 py-4 text-center font-semibold"
             >
               Back to Setup
             </a>

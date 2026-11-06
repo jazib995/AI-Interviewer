@@ -141,15 +141,31 @@ class AnswerSubmission(BaseModel):
     role: str
     question: str
     answer: str
+class InterviewSubmission(BaseModel):
+    role: str
+    interview_type: str
+    difficulty: str
+    answers: list[AnswerSubmission]
 
 
 @app.post("/interview/submit")
 def submit_answer(request: AnswerSubmission):
-
     return {
         "message": "Answer received successfully!",
         "role": request.role,
         "question": request.question,
         "answer": request.answer,
         "status": "received"
+    }
+@app.post("/interview/submit-complete")
+def submit_complete_interview(request: InterviewSubmission):
+
+    return {
+        "message": "Complete interview received successfully!",
+        "role": request.role,
+        "interview_type": request.interview_type,
+        "difficulty": request.difficulty,
+        "total_answers": len(request.answers),
+        "answers": request.answers,
+        "status": "completed"
     }
