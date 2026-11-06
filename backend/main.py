@@ -1,8 +1,9 @@
 
-from fastapi import FastAPI
+from fastapi import FastAPI,HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
+from bson import ObjectId
 client = MongoClient("mongodb://localhost:27017/")
 db = client["ai_interviewer"]
 interviews_collection = db["interviews"]
@@ -202,3 +203,42 @@ def submit_complete_interview(request: InterviewSubmission):
         "total_answers": len(request.answers),
         "status": "completed"
     }
+@app.get("/interviews")
+def get_interviews():
+
+    interviews = []
+
+    for interview in interviews_collection.find().sort("_id", -1):
+
+        interview["id"] = str(interview["_id"])
+        del interview["_id"]
+
+        interviews.append(interview)
+
+    return {
+        "total": len(interviews),
+        "interviews": interviews
+    }
+@app.get("/interviews/{interview_id}")
+def get_interview(interview_id: str):
+
+    if not ObjectId.is_valid(interview_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid interview ID"
+        )
+
+    interview = interviews_collection.find_one({
+        "_id": ObjectId(interview_id)
+    })
+
+    if interview is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Interview not found"
+        )
+
+    interview["id"] = str(interview["_id"])
+    del interview["_id"]
+
+    return interview
