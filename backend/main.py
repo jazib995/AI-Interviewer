@@ -137,3 +137,19 @@ def start_interview(request: InterviewRequest):
         "difficulty": request.difficulty,
         "questions": selected_questions
     }
+class AnswerSubmission(BaseModel):
+    role: str
+    question: str
+    answer: str
+
+
+@app.post("/interview/submit")
+def submit_answer(request: AnswerSubmission):
+
+    return {
+        "message": "Answer received successfully!",
+        "role": request.role,
+        "question": request.question,
+        "answer": request.answer,
+        "status": "received"
+    }

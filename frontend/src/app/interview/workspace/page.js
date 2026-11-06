@@ -1,7 +1,7 @@
-
 "use client";
 
 import { useState } from "react";
+import { useRef } from "react";
 import { Suspense } from "react";
 import { useEffect } from "react";
 import Image from "next/image";
@@ -11,94 +11,187 @@ import { useSearchParams } from "next/navigation";
 //   questionsFromBackend.length > 0
 //     ? ((currentQuestion + 1) / questionsFromBackend.length) * 100
 //     : 0;
-  
 
- function InterviewWorkspaceContent() {
-    const searchParams = useSearchParams();
+function InterviewWorkspaceContent() {
+  const searchParams = useSearchParams();
+  const role = searchParams.get("role") || "Software Engineer";
+  const interviewType = searchParams.get("type") || "Technical";
+  const difficulty = searchParams.get("difficulty") || "Intermediate";
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [backendResponse, setBackendResponse] = useState(null);
+  const [backendError, setBackendError] = useState("");
+  const [questionsFromBackend, setQuestionsFromBackend] = useState([]);
 
-const role = searchParams.get("role") || "Software Engineer";
-const interviewType = searchParams.get("type") || "Technical";
-const difficulty = searchParams.get("difficulty") || "Intermediate";
-const [currentQuestion, setCurrentQuestion] = useState(0);
-const [backendResponse, setBackendResponse] = useState(null);
-const [backendError, setBackendError] = useState("");
-const [questionsFromBackend, setQuestionsFromBackend] = useState([]);
+  useEffect(() => {
+    async function startInterview() {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/interview/start", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            role: role,
+            interview_type: interviewType,
+            difficulty: difficulty,
+          }),
+        });
 
+        if (!response.ok) {
+          throw new Error("Failed to connect to backend");
+        }
 
-useEffect(() => {
-  async function startInterview() {
+        const data = await response.json();
+        console.log("First question:", data.questions[0]);
+        console.log("First question type:", typeof data.questions[0]);
+
+        setBackendResponse(data);
+        setQuestionsFromBackend(data.questions);
+      } catch (error) {
+        setBackendError(error.message);
+      }
+    }
+
+    startInterview();
+  }, [role, interviewType, difficulty]);
+  const [isListening, setIsListening] = useState(false);
+  const [isFinished, setIsFinished] = useState(false);
+  const [answer, setAnswer] = useState("");
+  const [speechError, setSpeechError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionMessage, setSubmissionMessage] = useState("");
+  const recognitionRef = useRef(null);
+
+  const question = questionsFromBackend[currentQuestion];
+  const progress =
+    questionsFromBackend.length > 0
+      ? ((currentQuestion + 1) / questionsFromBackend.length) * 100
+      : 0;
+  function toggleRecording() {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const SpeechRecognition =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setSpeechError("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+
+    recognition.onresult = (event) => {
+      let transcript = "";
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript + " ";
+        }
+      }
+
+      if (transcript) {
+        setAnswer((previous) => previous + transcript);
+      }
+    };
+
+    recognition.onerror = (event) => {
+      recognition.onerror = (event) => {
+        if (event.error === "no-speech") {
+          setSpeechError("No speech detected. Please try speaking again.");
+        } else {
+          setSpeechError("Microphone error: " + event.error);
+        }
+
+        setIsListening(false);
+      };
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    setSpeechError("");
+    recognition.start();
+    setIsListening(true);
+  }
+  async function submitAnswer() {
+    if (!answer.trim()) {
+      setSubmissionMessage("Please provide an answer first.");
+      return;
+    }
+
     try {
-      const response = await fetch("http://127.0.0.1:8000/interview/start", {
+      setIsSubmitting(true);
+      setSubmissionMessage("");
+
+      const response = await fetch("http://127.0.0.1:8000/interview/submit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           role: role,
-          interview_type: interviewType,
-          difficulty: difficulty,
+          question: question.title,
+          answer: answer,
         }),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to connect to backend");
+        throw new Error("Failed to submit answer.");
       }
 
       const data = await response.json();
-      console.log("First question:", data.questions[0]);
-console.log("First question type:", typeof data.questions[0]);
-      
 
-      setBackendResponse(data);
-      setQuestionsFromBackend(data.questions);
+      console.log("Submission response:", data);
+
+      setSubmissionMessage("Answer submitted successfully!");
+
+      nextQuestion();
     } catch (error) {
-      setBackendError(error.message);
+      setSubmissionMessage(error.message);
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
-  startInterview();
-}, [role, interviewType, difficulty]);
-  const [isListening, setIsListening] = useState(false);
-  const [isFinished, setIsFinished] = useState(false);
-
-  const question = questionsFromBackend[currentQuestion];
-const progress =
-  questionsFromBackend.length > 0
-    ? ((currentQuestion + 1) / questionsFromBackend.length) * 100
-    : 0;
-  function toggleRecording() {
-    setIsListening(!isListening);
-  }
-
   function nextQuestion() {
-  setIsListening(false);
+    setAnswer("");
+    setSpeechError("");
 
-  if (currentQuestion < questionsFromBackend.length - 1) {
-    setCurrentQuestion(currentQuestion + 1);
-  } else {
-    setIsFinished(true);
+    if (currentQuestion < questionsFromBackend.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
+    } else {
+      setIsFinished(true);
+    }
   }
-}
-if (backendError) {
-  return (
-    <main className="min-h-screen bg-[#090611] p-10 text-white">
-      <h1 className="text-xl text-red-400">Backend Error</h1>
-      <p>{backendError}</p>
-    </main>
-  );
-}
+  if (backendError) {
+    return (
+      <main className="min-h-screen bg-[#090611] p-10 text-white">
+        <h1 className="text-xl text-red-400">Backend Error</h1>
+        <p>{backendError}</p>
+      </main>
+    );
+  }
 
-if (!backendResponse || questionsFromBackend.length === 0) {
-  return (
-    <main className="min-h-screen bg-[#090611] p-10 text-white">
-      <p className="text-purple-300">Loading interview questions...</p>
-    </main>
-  );
-}
+  if (!backendResponse || questionsFromBackend.length === 0) {
+    return (
+      <main className="min-h-screen bg-[#090611] p-10 text-white">
+        <p className="text-purple-300">Loading interview questions...</p>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#090611] text-white">
-
       {/* Background effects */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-40 top-32 h-96 w-96 rounded-full bg-purple-700/20 blur-[150px]" />
@@ -107,16 +200,14 @@ if (!backendResponse || questionsFromBackend.length === 0) {
 
       {/* Header */}
       <header className="relative z-10 flex flex-wrap items-center justify-between gap-4 border-b border-purple-500/20 bg-[#0d091a]/80 px-6 py-5 backdrop-blur-xl lg:px-10">
-
         <a href="/" className="text-2xl font-bold tracking-wide">
           INTERVIEW<span className="text-purple-400">.AI</span>
         </a>
 
         <div className="flex items-center gap-6">
-
           <div className="hidden rounded-full border border-purple-400/20 bg-purple-500/10 px-5 py-2 sm:block">
             <span className="text-sm text-gray-400">Time Left</span>
-            
+
             <span className="ml-3 font-semibold">25:00</span>
           </div>
 
@@ -130,9 +221,7 @@ if (!backendResponse || questionsFromBackend.length === 0) {
                 <div
                   key={index}
                   className={`h-1.5 w-7 rounded-full ${
-                    index <= currentQuestion
-                      ? "bg-purple-500"
-                      : "bg-purple-950"
+                    index <= currentQuestion ? "bg-purple-500" : "bg-purple-950"
                   }`}
                 />
               ))}
@@ -148,22 +237,21 @@ if (!backendResponse || questionsFromBackend.length === 0) {
       {/* Main workspace */}
       <section className="relative z-10 mx-auto grid max-w-[1500px] items-center gap-8 px-6 py-10 lg:grid-cols-[0.9fr_1.5fr_0.7fr] lg:px-10">
         <div className="col-span-full flex flex-wrap gap-3">
-  <span className="rounded-full border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-sm text-purple-200">
-    Role: {role}
-  </span>
+          <span className="rounded-full border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-sm text-purple-200">
+            Role: {role}
+          </span>
 
-  <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200">
-    Type: {interviewType}
-  </span>
+          <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-4 py-2 text-sm text-cyan-200">
+            Type: {interviewType}
+          </span>
 
-  <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300">
-    Difficulty: {difficulty}
-  </span>
-</div>
+          <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300">
+            Difficulty: {difficulty}
+          </span>
+        </div>
 
         {/* AI Interviewer */}
         <div className="relative flex min-h-[440px] flex-col items-center justify-center">
-
           {/* AI online badge */}
           <div className="absolute left-0 top-0 flex items-center gap-3 rounded-2xl border border-purple-400/25 bg-purple-500/10 px-4 py-3 backdrop-blur-xl">
             <span className="h-3 w-3 rounded-full bg-green-400 shadow-[0_0_12px_#4ade80]" />
@@ -200,10 +288,8 @@ if (!backendResponse || questionsFromBackend.length === 0) {
 
         {/* Question and microphone */}
         <div className="flex flex-col gap-6">
-
           {/* Question card */}
           <div className="rounded-3xl border border-purple-400/20 bg-white/[0.045] p-7 shadow-2xl shadow-purple-950/30 backdrop-blur-2xl sm:p-10">
-
             <div className="mb-8 inline-flex items-center gap-3 rounded-full border border-purple-400/20 bg-purple-500/15 px-5 py-3">
               <span className="text-lg">✧</span>
               <span className="text-sm font-semibold text-purple-200">
@@ -218,6 +304,31 @@ if (!backendResponse || questionsFromBackend.length === 0) {
             <p className="mt-6 text-base leading-8 text-gray-300 sm:text-lg">
               {question.description}
             </p>
+            <div className="mt-8 rounded-2xl border border-purple-500/20 bg-purple-500/5 p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-semibold text-white">Your Answer</h3>
+
+                {isListening && (
+                  <span className="text-sm text-green-400">Listening...</span>
+                )}
+              </div>
+
+              <textarea
+                value={answer}
+                onChange={(e) => setAnswer(e.target.value)}
+                placeholder="Your spoken answer will appear here..."
+                className="min-h-32 w-full resize-none rounded-xl border border-purple-500/20 bg-[#100b1d] p-4 text-white outline-none focus:border-purple-400"
+              />
+              {submissionMessage && (
+                <p className="mt-3 text-sm text-purple-300">
+                  {submissionMessage}
+                </p>
+              )}
+
+              {speechError && (
+                <p className="mt-2 text-sm text-red-400">{speechError}</p>
+              )}
+            </div>
 
             <div className="mt-9 flex items-start gap-3 rounded-2xl border border-purple-400/20 bg-purple-500/10 p-5">
               <span className="text-xl">💡</span>
@@ -225,16 +336,13 @@ if (!backendResponse || questionsFromBackend.length === 0) {
                 <p className="text-sm font-semibold text-purple-200">
                   Quick Tip
                 </p>
-                <p className="mt-1 text-sm text-gray-300">
-                  {question.tip}
-                </p>
+                <p className="mt-1 text-sm text-gray-300">{question.tip}</p>
               </div>
             </div>
           </div>
 
           {/* Microphone controls */}
           <div className="flex flex-col items-center rounded-3xl border border-white/10 bg-white/[0.025] px-6 py-7">
-
             <button
               onClick={toggleRecording}
               className={`flex h-28 w-28 items-center justify-center rounded-full border-4 text-4xl shadow-xl transition duration-300 hover:scale-105 ${
@@ -248,7 +356,9 @@ if (!backendResponse || questionsFromBackend.length === 0) {
             </button>
 
             <p className="mt-5 text-sm font-semibold">
-              {isListening ? "Recording simulation active" : "Click to Start Recording"}
+              {isListening
+                ? "Recording simulation active"
+                : "Click to Start Recording"}
             </p>
 
             <p className="mt-2 text-xs text-gray-500">
@@ -258,19 +368,16 @@ if (!backendResponse || questionsFromBackend.length === 0) {
             </p>
 
             <button
-              onClick={nextQuestion}
+              onClick={submitAnswer}
               className="mt-7 w-full rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 py-4 font-semibold shadow-lg shadow-purple-600/20 transition hover:-translate-y-1 hover:shadow-purple-500/30"
             >
-              {currentQuestion === questionsFromBackend.length - 1
-                ? "Finish Interview"
-                : "Next Question →"}
+              {isSubmitting ? "Submitting..." : "Submit Answer"}
             </button>
           </div>
         </div>
 
         {/* Right sidebar */}
         <aside className="flex flex-col gap-6">
-
           {/* Progress card */}
           <div className="rounded-3xl border border-purple-400/20 bg-white/[0.04] p-6 backdrop-blur-xl">
             <h2 className="text-lg font-semibold">Interview Progress</h2>
@@ -311,9 +418,7 @@ if (!backendResponse || questionsFromBackend.length === 0) {
 
           {/* Quick tips */}
           <div className="rounded-3xl border border-purple-400/20 bg-purple-500/[0.08] p-6">
-            <h2 className="mb-5 text-lg font-semibold">
-              ✦ Quick Tips
-            </h2>
+            <h2 className="mb-5 text-lg font-semibold">✦ Quick Tips</h2>
 
             <ul className="space-y-4 text-sm text-gray-300">
               <li>✓ Be yourself</li>
@@ -347,14 +452,12 @@ if (!backendResponse || questionsFromBackend.length === 0) {
           <div className="w-full max-w-md rounded-3xl border border-purple-400/30 bg-[#160e29] p-10 text-center shadow-2xl shadow-purple-950">
             <div className="text-5xl">✦</div>
 
-            <h2 className="mt-6 text-2xl font-bold">
-              Interview Completed!
-            </h2>
+            <h2 className="mt-6 text-2xl font-bold">Interview Completed!</h2>
 
             <p className="mt-4 text-sm leading-7 text-gray-400">
-              Great work! You've completed this sample interview.
-              Your AI-generated feedback will appear here once we
-              connect the AI evaluation system.
+              Great work! You've completed this sample interview. Your
+              AI-generated feedback will appear here once we connect the AI
+              evaluation system.
             </p>
 
             <a
@@ -368,14 +471,10 @@ if (!backendResponse || questionsFromBackend.length === 0) {
       )}
     </main>
   );
- }
+}
 export default function InterviewWorkspace() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-[#090611]" />
-      }
-    >
+    <Suspense fallback={<div className="min-h-screen bg-[#090611]" />}>
       <InterviewWorkspaceContent />
     </Suspense>
   );
