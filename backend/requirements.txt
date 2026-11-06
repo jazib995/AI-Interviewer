@@ -7,6 +7,8 @@ h11==0.16.0
 httptools==0.9.0
 idna==3.20
 opentelemetry-api==1.45.2
+dnspython==2.9.2
+pymongo==4.19.0
 pydantic==2.14.3
 pydantic_core==2.50.4
 python-dotenv==1.2.4

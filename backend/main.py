@@ -2,6 +2,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pymongo import MongoClient
+client = MongoClient("mongodb://localhost:27017/")
+db = client["ai_interviewer"]
+interviews_collection = db["interviews"]
 
 app = FastAPI(
     title="AI Interviewer API",
@@ -30,6 +34,24 @@ def home():
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+@app.get("/test-db")
+def test_database():
+
+    try:
+        client.admin.command("ping")
+
+        return {
+            "message": "MongoDB connection successful!",
+            "database": db.name,
+            "status": "connected"
+        }
+
+    except Exception as error:
+        return {
+            "message": "MongoDB connection failed!",
+            "error": str(error),
+            "status": "error"
+        }
 
 class InterviewRequest(BaseModel):
     role: str
@@ -160,12 +182,23 @@ def submit_answer(request: AnswerSubmission):
 @app.post("/interview/submit-complete")
 def submit_complete_interview(request: InterviewSubmission):
 
-    return {
-        "message": "Complete interview received successfully!",
+    interview_data = {
         "role": request.role,
         "interview_type": request.interview_type,
         "difficulty": request.difficulty,
+        "answers": [
+            answer.model_dump()
+            for answer in request.answers
+        ],
         "total_answers": len(request.answers),
-        "answers": request.answers,
+        "status": "completed"
+    }
+
+    result = interviews_collection.insert_one(interview_data)
+
+    return {
+        "message": "Interview saved successfully!",
+        "interview_id": str(result.inserted_id),
+        "total_answers": len(request.answers),
         "status": "completed"
     }
