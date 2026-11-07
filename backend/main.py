@@ -13,6 +13,7 @@ load_dotenv()
 client = MongoClient("mongodb://localhost:27017/")
 db = client["ai_interviewer"]
 interviews_collection = db["interviews"]
+jobs_collection = db["jobs"]
 
 app = FastAPI(
     title="AI Interviewer API",
@@ -64,6 +65,13 @@ class InterviewRequest(BaseModel):
     role: str
     interview_type: str
     difficulty: str
+class JobRequest(BaseModel):
+    title: str
+    department: str
+    description: str
+    requirements: str
+    location: str
+    job_type: str
 
 
 # Start a new interview
@@ -225,3 +233,41 @@ def get_interview(interview_id: str):
     del interview["_id"]
 
     return interview
+@app.post("/jobs")
+def create_job(request: JobRequest):
+    try:
+        job_data = {
+            "title": request.title,
+            "department": request.department,
+            "description": request.description,
+            "requirements": request.requirements,
+            "location": request.location,
+            "job_type": request.job_type,
+            "status": "active"
+        }
+
+        result = jobs_collection.insert_one(job_data)
+
+        return {
+            "message": "Job created successfully!",
+            "job_id": str(result.inserted_id),
+            "status": "active"
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Job creation failed: {error}"
+        )
+@app.get("/jobs")
+def get_jobs():
+    jobs = list(jobs_collection.find().sort("_id", -1))
+
+    for job in jobs:
+        job["id"] = str(job["_id"])
+        del job["_id"]
+
+    return {
+        "jobs": jobs,
+        "total": len(jobs)
+    }

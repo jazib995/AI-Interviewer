@@ -2,12 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-const stats = [
-  { label: "Total Interviews", value: "01", icon: "📋" },
-  { label: "Completed", value: "01", icon: "✓" },
-  { label: "Pending Review", value: "01", icon: "◷" },
-  { label: "Active Jobs", value: "00", icon: "💼" },
-];
+
 
 export default function RecruiterDashboard() {
   const router = useRouter();
@@ -15,6 +10,7 @@ export default function RecruiterDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [sortBy, setSortBy] = useState("score");
+  const [jobs, setJobs] = useState([]);
   const stats = [
     {
       label: "Total Interviews",
@@ -33,7 +29,7 @@ export default function RecruiterDashboard() {
     },
     {
       label: "Active Jobs",
-      value: 0,
+      value: jobs.filter((job) => job.status === "active").length,
       icon: "💼",
     },
   ];
@@ -74,6 +70,24 @@ export default function RecruiterDashboard() {
 
     fetchInterviews();
   }, []);
+  useEffect(() => {
+  async function fetchJobs() {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/jobs");
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch jobs.");
+      }
+
+      const data = await response.json();
+      setJobs(data.jobs);
+    } catch (err) {
+      console.error("Jobs error:", err);
+    }
+  }
+
+  fetchJobs();
+}, []);
   return (
     <main className="min-h-screen bg-[#090611] p-6 text-white md:p-10">
       {/* Header */}
@@ -86,7 +100,10 @@ export default function RecruiterDashboard() {
           </p>
         </div>
 
-        <button className="rounded-xl bg-purple-600 px-5 py-3 font-medium transition hover:bg-purple-500">
+        <button
+          onClick={() => router.push("/recruiter/jobs/create")}
+          className="..."
+        >
           + Create Job
         </button>
       </header>
@@ -107,6 +124,50 @@ export default function RecruiterDashboard() {
           </div>
         ))}
       </section>
+      <section className="mb-10">
+  <div className="mb-6">
+    <h2 className="text-xl font-semibold mt-5">Active Job Openings</h2>
+    <p className="mt-1 text-sm text-gray-400">
+      Manage your currently available positions.
+    </p>
+  </div>
+
+  {jobs.length === 0 ? (
+    <div className="rounded-2xl border border-purple-500/20 bg-white/5 p-8 text-center">
+      <p className="text-gray-400">No jobs created yet.</p>
+    </div>
+  ) : (
+    <div className="grid gap-5 md:grid-cols-2">
+      {jobs.map((job) => (
+        <div
+          key={job.id}
+          className="rounded-2xl border border-purple-500/20 bg-white/5 p-6"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-semibold">{job.title}</h3>
+
+            <span className="rounded-full bg-green-500/10 px-3 py-1 text-xs text-green-400">
+              {job.status}
+            </span>
+          </div>
+
+          <p className="mt-2 text-sm text-purple-300">
+            {job.department}
+          </p>
+
+          <p className="mt-4 text-sm text-gray-400">
+            {job.description}
+          </p>
+
+          <div className="mt-5 flex flex-wrap gap-3 text-xs text-gray-400">
+            <span>📍 {job.location}</span>
+            <span>💼 {job.job_type}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</section>
 
       {/* Interviews */}
       <section className="mt-10 rounded-2xl border border-purple-500/20 bg-[#151020] p-6">
@@ -162,7 +223,7 @@ export default function RecruiterDashboard() {
                   </td>
                 </tr>
               ) : (
-                sortedInterviews.map((interview,index) => (
+                sortedInterviews.map((interview, index) => (
                   <tr
                     key={interview.id}
                     className="border-b border-purple-500/10"
