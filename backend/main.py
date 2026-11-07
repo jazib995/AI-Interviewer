@@ -1,9 +1,13 @@
 
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
 from fastapi import FastAPI,HTTPException
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from bson import ObjectId
+load_dotenv()
 client = MongoClient("mongodb://localhost:27017/")
 db = client["ai_interviewer"]
 interviews_collection = db["interviews"]
