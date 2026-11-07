@@ -7,6 +7,8 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from pymongo import MongoClient
 from bson import ObjectId
+import json
+from ai_service import generate_ai_response, evaluate_interview
 load_dotenv()
 client = MongoClient("mongodb://localhost:27017/")
 db = client["ai_interviewer"]
@@ -67,102 +69,56 @@ class InterviewRequest(BaseModel):
 # Start a new interview
 @app.post("/interview/start")
 def start_interview(request: InterviewRequest):
-     questions = {
-    "Software Engineer": [
-        {
-            "title": "Tell me about yourself.",
-            "description": "Introduce yourself and explain your technical background.",
-            "tip": "Focus on your education, technical skills, and relevant projects."
-        },
-        {
-            "title": "What is object-oriented programming?",
-            "description": "Explain the concept of OOP and its main principles.",
-            "tip": "Discuss encapsulation, inheritance, polymorphism, and abstraction."
-        },
-        {
-            "title": "What is the difference between an array and a linked list?",
-            "description": "Compare how these two data structures store and access data.",
-            "tip": "Think about memory allocation and insertion or deletion."
-        },
-        {
-            "title": "How do you handle errors in your code?",
-            "description": "Explain how you identify and manage programming errors.",
-            "tip": "Mention exception handling, debugging, and validation."
-        },
-        {
-            "title": "Explain a challenging project you have worked on.",
-            "description": "Describe a project, the challenges you faced, and how you solved them.",
-            "tip": "Use a real project and explain your contribution."
-        }
-    ],
 
-    "Frontend Developer": [
-        {
-            "title": "Tell me about yourself.",
-            "description": "Introduce yourself and your frontend development experience.",
-            "tip": "Mention your technologies and projects."
-        },
-        {
-            "title": "What is the difference between React and Next.js?",
-            "description": "Explain how these technologies differ and work together.",
-            "tip": "Mention routing, rendering, and framework features."
-        },
-        {
-            "title": "What are React hooks?",
-            "description": "Explain how hooks help manage state and component behavior.",
-            "tip": "Give examples such as useState and useEffect."
-        },
-        {
-            "title": "How does responsive web design work?",
-            "description": "Explain how websites adapt to different screen sizes.",
-            "tip": "Mention CSS media queries and flexible layouts."
-        },
-        {
-            "title": "How do you improve website performance?",
-            "description": "Discuss techniques for making websites load and respond faster.",
-            "tip": "Think about image optimization and reducing unnecessary rendering."
-        }
-    ],
+    prompt = f"""
+You are a professional recruitment interviewer.
 
-    "Backend Developer": [
-        {
-            "title": "Tell me about yourself.",
-            "description": "Introduce yourself and your backend development experience.",
-            "tip": "Mention programming languages, databases, and projects."
-        },
-        {
-            "title": "What is an API?",
-            "description": "Explain how applications communicate through APIs.",
-            "tip": "Use a simple example of a frontend requesting backend data."
-        },
-        {
-            "title": "What is the difference between SQL and NoSQL?",
-            "description": "Compare relational and non-relational databases.",
-            "tip": "Discuss structure, relationships, and use cases."
-        },
-        {
-            "title": "Explain authentication and authorization.",
-            "description": "Describe how systems verify users and control their permissions.",
-            "tip": "Explain the difference between identity and access."
-        },
-        {
-            "title": "How do you handle database errors?",
-            "description": "Explain how you manage failures during database operations.",
-            "tip": "Mention exception handling, validation, and transactions."
-        }
-    ]
-}
-     selected_questions = questions.get(
-        request.role,
-        questions["Software Engineer"]
-    )
+Generate exactly 5 interview questions for this candidate.
 
-     return {
-        "message": "Interview configuration received!",
+Job role: {request.role}
+Interview type: {request.interview_type}
+Difficulty: {request.difficulty}
+
+Return ONLY a valid JSON array.
+
+Each item must have exactly these three fields:
+- "title": the interview question
+- "description": a short explanation of what the candidate should address
+- "tip": a short helpful hint for the candidate
+
+Do not include markdown or text outside the JSON array.
+"""
+
+    try:
+        ai_response = generate_ai_response(prompt)
+
+        questions = json.loads(ai_response)
+
+        if not isinstance(questions, list) or len(questions) != 5:
+            raise ValueError("AI did not return exactly 5 questions.")
+
+        for question in questions:
+            if not all(key in question for key in ["title", "description", "tip"]):
+                raise ValueError("AI returned an invalid question format.")
+
+    except (json.JSONDecodeError, ValueError) as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI returned an invalid response: {error}"
+        )
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not generate interview questions: {error}"
+        )
+
+    return {
+        "message": "AI-generated interview questions created successfully!",
         "role": request.role,
         "interview_type": request.interview_type,
         "difficulty": request.difficulty,
-        "questions": selected_questions
+        "questions": questions
     }
 class AnswerSubmission(BaseModel):
     role: str
@@ -187,26 +143,49 @@ def submit_answer(request: AnswerSubmission):
 @app.post("/interview/submit-complete")
 def submit_complete_interview(request: InterviewSubmission):
 
-    interview_data = {
-        "role": request.role,
-        "interview_type": request.interview_type,
-        "difficulty": request.difficulty,
-        "answers": [
+    try:
+        # Convert answers into a format AI can understand
+        answers = [
             answer.model_dump()
             for answer in request.answers
-        ],
-        "total_answers": len(request.answers),
-        "status": "completed"
-    }
+        ]
 
-    result = interviews_collection.insert_one(interview_data)
+        # Generate AI evaluation
+        evaluation = evaluate_interview(
+            request.role,
+            request.interview_type,
+            request.difficulty,
+            answers
+        )
 
-    return {
-        "message": "Interview saved successfully!",
-        "interview_id": str(result.inserted_id),
-        "total_answers": len(request.answers),
-        "status": "completed"
-    }
+        # Prepare interview data
+        interview_data = {
+            "role": request.role,
+            "interview_type": request.interview_type,
+            "difficulty": request.difficulty,
+            "answers": answers,
+            "total_answers": len(answers),
+            "evaluation": evaluation,
+            "status": "completed"
+        }
+
+        # Save everything in MongoDB
+        result = interviews_collection.insert_one(interview_data)
+
+        return {
+            "message": "Interview evaluated and saved successfully!",
+            "interview_id": str(result.inserted_id),
+            "total_answers": len(answers),
+            "evaluation": evaluation,
+            "status": "completed"
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Interview evaluation failed: {error}"
+        )
+
 @app.get("/interviews")
 def get_interviews():
 
