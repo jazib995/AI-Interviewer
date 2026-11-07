@@ -14,6 +14,44 @@ export default function RecruiterDashboard() {
   const [interviews, setInterviews] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sortBy, setSortBy] = useState("score");
+  const stats = [
+    {
+      label: "Total Interviews",
+      value: interviews.length,
+      icon: "📋",
+    },
+    {
+      label: "Completed",
+      value: interviews.filter((i) => i.status === "completed").length,
+      icon: "✓",
+    },
+    {
+      label: "Evaluated",
+      value: interviews.filter((i) => i.evaluation).length,
+      icon: "◷",
+    },
+    {
+      label: "Active Jobs",
+      value: 0,
+      icon: "💼",
+    },
+  ];
+
+  const sortedInterviews = [...interviews].sort((a, b) => {
+    if (sortBy === "score") {
+      const scoreA = a.evaluation?.overall_score ?? -1;
+      const scoreB = b.evaluation?.overall_score ?? -1;
+
+      return scoreB - scoreA;
+    }
+
+    if (sortBy === "recent") {
+      return b.id.localeCompare(a.id);
+    }
+
+    return 0;
+  });
 
   useEffect(() => {
     async function fetchInterviews() {
@@ -72,20 +110,33 @@ export default function RecruiterDashboard() {
 
       {/* Interviews */}
       <section className="mt-10 rounded-2xl border border-purple-500/20 bg-[#151020] p-6">
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold">Recent Interviews</h2>
-          <p className="mt-1 text-sm text-gray-400">
-            Review candidate interview activity.
-          </p>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-semibold">Candidate Rankings</h2>
+            <p className="mt-1 text-sm text-gray-400">
+              Compare candidates based on their AI evaluation scores.
+            </p>
+          </div>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="rounded-xl border border-purple-500/30 bg-[#090611] px-4 py-3 text-sm text-white outline-none"
+          >
+            <option value="score">Highest Score First</option>
+            <option value="recent">Most Recent First</option>
+          </select>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full min-w-[650px] text-left">
             <thead>
               <tr className="border-b border-purple-500/20 text-sm text-gray-400">
+                <th className="pb-4">Rank</th>
                 <th className="pb-4">Candidate</th>
                 <th className="pb-4">Position</th>
                 <th className="pb-4">Interview Type</th>
+                <th className="pb-4">AI Score</th>
                 <th className="pb-4">Status</th>
                 <th className="pb-4">Action</th>
               </tr>
@@ -111,11 +162,14 @@ export default function RecruiterDashboard() {
                   </td>
                 </tr>
               ) : (
-                interviews.map((interview) => (
+                sortedInterviews.map((interview,index) => (
                   <tr
                     key={interview.id}
                     className="border-b border-purple-500/10"
                   >
+                    <td className="py-4 font-semibold text-purple-300">
+                      #{index + 1}
+                    </td>
                     <td className="py-5 font-medium">
                       Candidate #{interview.id.slice(-5)}
                     </td>
@@ -124,6 +178,17 @@ export default function RecruiterDashboard() {
 
                     <td className="py-5 text-gray-300">
                       {interview.interview_type}
+                    </td>
+                    <td className="py-4">
+                      {interview.evaluation?.overall_score != null ? (
+                        <span className="rounded-full bg-purple-500/15 px-3 py-1 text-sm font-semibold text-purple-300">
+                          {interview.evaluation.overall_score}/100
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-500">
+                          Not evaluated
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-5">
