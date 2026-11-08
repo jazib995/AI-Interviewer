@@ -1,5 +1,7 @@
 
 import os
+import secrets
+from datetime import datetime, timezone
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi import FastAPI,HTTPException
@@ -14,6 +16,7 @@ client = MongoClient("mongodb://localhost:27017/")
 db = client["ai_interviewer"]
 interviews_collection = db["interviews"]
 jobs_collection = db["jobs"]
+invitations_collection = db["invitations"]
 
 app = FastAPI(
     title="AI Interviewer API",
@@ -99,14 +102,22 @@ Do not include markdown or text outside the JSON array.
 
     try:
         ai_response = generate_ai_response(prompt)
+        print("AI RAW RESPONSE:", ai_response)
 
-        questions = json.loads(ai_response)
+        parsed_response = json.loads(ai_response)
+
+        if isinstance(parsed_response, dict):
+            questions = parsed_response.get("items", [])
+        else:
+            questions = parsed_response
 
         if not isinstance(questions, list) or len(questions) != 5:
             raise ValueError("AI did not return exactly 5 questions.")
 
         for question in questions:
-            if not all(key in question for key in ["title", "description", "tip"]):
+            if not isinstance(question, dict) or not all(
+                key in question for key in ["title", "description", "tip"]
+            ):
                 raise ValueError("AI returned an invalid question format.")
 
     except (json.JSONDecodeError, ValueError) as error:
@@ -137,6 +148,9 @@ class InterviewSubmission(BaseModel):
     interview_type: str
     difficulty: str
     answers: list[AnswerSubmission]
+    job_id: str | None = None
+    candidate_name: str | None = None
+    candidate_email: str | None = None
 
 
 @app.post("/interview/submit")
@@ -171,10 +185,13 @@ def submit_complete_interview(request: InterviewSubmission):
             "role": request.role,
             "interview_type": request.interview_type,
             "difficulty": request.difficulty,
+            "candidate_name": request.candidate_name,
+            "candidate_email": request.candidate_email,
+            "job_id": request.job_id,
             "answers": answers,
             "total_answers": len(answers),
             "evaluation": evaluation,
-            "status": "completed"
+            "status": "completed",
         }
 
         # Save everything in MongoDB
@@ -270,4 +287,102 @@ def get_jobs():
     return {
         "jobs": jobs,
         "total": len(jobs)
+    }
+@app.get("/jobs/{job_id}/interviews")
+def get_job_interviews(job_id: str):
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid job ID."
+        )
+
+    job = jobs_collection.find_one({"_id": ObjectId(job_id)})
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found."
+        )
+
+    interviews = list(
+        interviews_collection.find(
+            {"job_id": job_id}
+        ).sort("_id", -1)
+    )
+
+    for interview in interviews:
+        interview["id"] = str(interview["_id"])
+        del interview["_id"]
+
+    job["id"] = str(job["_id"])
+    del job["_id"]
+
+    return {
+        "job": job,
+        "interviews": interviews,
+        "total": len(interviews)
+    }
+@app.post("/jobs/{job_id}/invite")
+def generate_job_invite(job_id: str):
+
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid job ID")
+
+    job = jobs_collection.find_one({"_id": ObjectId(job_id)})
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    token = secrets.token_urlsafe(24)
+
+    invitation = {
+        "token": token,
+        "job_id": job_id,
+        "created_at": datetime.now(timezone.utc),
+        "status": "active"
+    }
+
+    invitations_collection.insert_one(invitation)
+
+    return {
+        "message": "Invitation link generated successfully",
+        "token": token,
+        "job_id": job_id,
+        "invite_link": f"http://localhost:3000/interview/invite/{token}"
+    }
+@app.get("/interview/invite/{token}")
+def validate_invitation(token: str):
+
+    invitation = invitations_collection.find_one({
+        "token": token,
+        "status": "active"
+    })
+
+    if not invitation:
+        raise HTTPException(
+            status_code=404,
+            detail="Invalid or expired invitation link"
+        )
+
+    job = jobs_collection.find_one({
+        "_id": ObjectId(invitation["job_id"])
+    })
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Associated job not found"
+        )
+
+    return {
+        "valid": True,
+        "job": {
+            "id": str(job["_id"]),
+            "title": job["title"],
+            "department": job["department"],
+            "description": job["description"],
+            "requirements": job["requirements"],
+            "location": job["location"],
+            "job_type": job["job_type"]
+        }
     }
