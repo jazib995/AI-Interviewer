@@ -7,7 +7,6 @@ import { useSearchParams } from "next/navigation";
 
 function InterviewWorkspaceContent() {
   const searchParams = useSearchParams();
-
   const role = searchParams.get("role") || "Software Engineer";
   const interviewType = searchParams.get("type") || "Technical";
   const difficulty = searchParams.get("difficulty") || "Intermediate";
@@ -20,7 +19,6 @@ function InterviewWorkspaceContent() {
   const [backendResponse, setBackendResponse] = useState(null);
   const [backendError, setBackendError] = useState("");
   const [questionsFromBackend, setQuestionsFromBackend] = useState([]);
-
   const [isListening, setIsListening] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [answer, setAnswer] = useState("");
@@ -28,6 +26,8 @@ function InterviewWorkspaceContent() {
   const [speechError, setSpeechError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionMessage, setSubmissionMessage] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   const recognitionRef = useRef(null);
 
@@ -71,6 +71,24 @@ function InterviewWorkspaceContent() {
 
     startInterview();
   }, [role, interviewType, difficulty, invitationToken]);
+  // Handle speaking the question when it changes
+  useEffect(() => {
+    if (!voiceEnabled || !questionsFromBackend.length || isFinished) return;
+
+    const question = questionsFromBackend[currentQuestion];
+
+    if (!question) return;
+
+    const timer = setTimeout(() => {
+      speakQuestion(question.title);
+    }, 700);
+
+    return () => {
+      clearTimeout(timer);
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    };
+  }, [questionsFromBackend, currentQuestion, isFinished, voiceEnabled]);
 
   // Stop microphone when leaving the page
   useEffect(() => {
@@ -81,6 +99,8 @@ function InterviewWorkspaceContent() {
 
   // Voice recording
   function toggleRecording() {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -138,6 +158,34 @@ function InterviewWorkspaceContent() {
     } catch {
       setSpeechError("Could not start microphone. Please try again.");
     }
+  }
+  function speakQuestion(text) {
+    if (!("speechSynthesis" in window)) {
+      setSpeechError("Your browser does not support AI voice.");
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+
+    utterance.lang = "en-US";
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      setIsSpeaking(false);
+    };
+
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+    };
+
+    window.speechSynthesis.speak(utterance);
   }
 
   // Move to the next question
@@ -425,6 +473,11 @@ function InterviewWorkspaceContent() {
                   <p className="text-xs text-gray-500">
                     Question {currentQuestion + 1}
                   </p>
+                  {isSpeaking && (
+                    <p className="mt-1 text-xs font-medium text-purple-300 animate-pulse">
+                      🔊 AI is speaking...
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -438,6 +491,25 @@ function InterviewWorkspaceContent() {
             <h2 className="text-2xl font-bold leading-relaxed sm:text-3xl">
               {question.title}
             </h2>
+            <button
+              onClick={() => speakQuestion(question.title)}
+              disabled={isSpeaking}
+              className="mt-4 flex items-center gap-2 rounded-xl border border-purple-400/30 bg-purple-500/10 px-4 py-2 text-sm text-purple-200 transition hover:bg-purple-500/20 disabled:opacity-50"
+            >
+              {isSpeaking ? "🔊 Speaking..." : "🔊 Replay Question"}
+            </button>
+            <button
+              onClick={() => {
+                if (voiceEnabled) {
+                  window.speechSynthesis.cancel();
+                  setIsSpeaking(false);
+                }
+                setVoiceEnabled(!voiceEnabled);
+              }}
+              className="mt-3 ml-0 w-40 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10"
+            >
+              {voiceEnabled ? "🔊 Voice On" : "🔇 Voice Off"}
+            </button>
 
             <p className="mt-5 text-sm leading-7 text-gray-400 sm:text-base">
               {question.description}
