@@ -18,14 +18,14 @@ function InvitationContent() {
     async function validateInvitation() {
       try {
         const response = await fetch(
-          `http://127.0.0.1:8000/interview/invite/${token}`
+          `http://127.0.0.1:8000/interview/invite/${token}`,
         );
 
         const data = await response.json();
 
         if (!response.ok) {
           throw new Error(
-            data.detail || "This invitation is invalid or expired."
+            data.detail || "This invitation is invalid or expired.",
           );
         }
 
@@ -56,7 +56,7 @@ function InvitationContent() {
     setStarting(true);
 
     router.push(
-      `/interview/workspace?role=${encodeURIComponent(job.title)}&type=Technical&difficulty=Intermediate&job_id=${encodeURIComponent(job.id)}&candidate_name=${encodeURIComponent(candidateName.trim())}&candidate_email=${encodeURIComponent(candidateEmail.trim())}`
+      `/interview/workspace?role=${encodeURIComponent(job.title)}&type=Technical&difficulty=Intermediate&job_id=${encodeURIComponent(job.id)}&candidate_name=${encodeURIComponent(candidateName.trim())}&candidate_email=${encodeURIComponent(candidateEmail.trim())}&token=${encodeURIComponent(token)}`,
     );
   }
 
@@ -107,9 +107,7 @@ function InvitationContent() {
               ⚠
             </div>
 
-            <h2 className="text-2xl font-bold mb-3">
-              Invitation Unavailable
-            </h2>
+            <h2 className="text-2xl font-bold mb-3">Invitation Unavailable</h2>
 
             <p className="text-gray-400 leading-7">{error}</p>
 
@@ -180,9 +178,7 @@ function InvitationContent() {
                 </div>
 
                 <div className="border-t border-white/10 pt-7">
-                  <h4 className="font-semibold text-lg mb-3">
-                    About the Role
-                  </h4>
+                  <h4 className="font-semibold text-lg mb-3">About the Role</h4>
 
                   <p className="text-gray-400 text-sm leading-7 whitespace-pre-wrap">
                     {job.description}
@@ -190,9 +186,7 @@ function InvitationContent() {
                 </div>
 
                 <div className="border-t border-white/10 mt-7 pt-7">
-                  <h4 className="font-semibold text-lg mb-3">
-                    Requirements
-                  </h4>
+                  <h4 className="font-semibold text-lg mb-3">Requirements</h4>
 
                   <p className="text-gray-400 text-sm leading-7 whitespace-pre-wrap">
                     {job.requirements}

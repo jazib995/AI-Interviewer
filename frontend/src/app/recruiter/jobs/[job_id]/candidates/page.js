@@ -67,6 +67,11 @@ function JobCandidatesContent() {
     (a, b) =>
       (b.evaluation?.overall_score ?? -1) - (a.evaluation?.overall_score ?? -1),
   );
+  const [selectedCandidates, setSelectedCandidates] = useState([]);
+  const [showComparison, setShowComparison] = useState(false);
+  const comparisonCandidates = sortedInterviews.filter((interview) =>
+    selectedCandidates.includes(interview.id),
+  );
 
   const evaluatedCount = interviews.filter((item) => item.evaluation).length;
 
@@ -242,10 +247,19 @@ function JobCandidatesContent() {
                     Candidates ranked by their overall AI score.
                   </p>
                 </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs bg-purple-500/10 text-purple-300 border border-purple-400/20 px-4 py-2 rounded-full w-fit">
+                    Highest score first
+                  </span>
 
-                <span className="text-xs bg-purple-500/10 text-purple-300 border border-purple-400/20 px-4 py-2 rounded-full w-fit">
-                  Highest score first
-                </span>
+                  <button
+                    disabled={selectedCandidates.length < 2}
+                    onClick={() => setShowComparison(true)}
+                    className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium transition"
+                  >
+                    Compare Candidates ({selectedCandidates.length})
+                  </button>
+                </div>
               </div>
 
               {sortedInterviews.length === 0 ? (
@@ -266,6 +280,7 @@ function JobCandidatesContent() {
                   <table className="w-full text-left min-w-[750px]">
                     <thead className="bg-white/[0.03] text-gray-400 text-xs uppercase tracking-wider">
                       <tr>
+                        <th className="px-6 py-5">Select</th>
                         <th className="px-6 py-5">Rank</th>
                         <th className="px-6 py-5">Candidate</th>
                         <th className="px-6 py-5">Interview Type</th>
@@ -285,6 +300,27 @@ function JobCandidatesContent() {
                             className="hover:bg-purple-500/[0.06] transition"
                           >
                             <td className="px-6 py-5">
+                              <input
+                                type="checkbox"
+                                checked={selectedCandidates.includes(
+                                  interview.id,
+                                )}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedCandidates((prev) => [
+                                      ...prev,
+                                      interview.id,
+                                    ]);
+                                  } else {
+                                    setSelectedCandidates((prev) =>
+                                      prev.filter((id) => id !== interview.id),
+                                    );
+                                  }
+                                }}
+                                className="w-4 h-4 accent-purple-500 cursor-pointer"
+                              />
+                            </td>
+                            <td className="px-6 py-5">
                               <span className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-300 flex items-center justify-center font-bold">
                                 #{index + 1}
                               </span>
@@ -298,8 +334,15 @@ function JobCandidatesContent() {
 
                                 <div>
                                   <p className="font-medium">
-                                    Candidate #{interview.id.slice(-5)}
+                                    {interview.candidate_name ||
+                                      `Candidate #${interview.id.slice(-5)}`}
                                   </p>
+
+                                  <p className="text-xs text-gray-400 mt-1">
+                                    {interview.candidate_email ||
+                                      "Email not available"}
+                                  </p>
+
                                   <p className="text-xs text-gray-500 mt-1">
                                     {interview.role}
                                   </p>
@@ -357,6 +400,89 @@ function JobCandidatesContent() {
                 </div>
               )}
             </section>
+            {/* Candidate Comparison Modal */}
+            {showComparison && (
+              <section className="mt-8 bg-white/[0.04] border border-purple-400/20 rounded-3xl p-6 md:p-8 backdrop-blur-xl">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h2 className="text-xl font-bold">Candidate Comparison</h2>
+                    <p className="text-sm text-gray-400 mt-1">
+                      Compare candidate performance side by side.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => setShowComparison(false)}
+                    className="text-gray-400 hover:text-white text-sm"
+                  >
+                    Close ✕
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {comparisonCandidates.map((candidate) => (
+                    <div
+                      key={candidate.id}
+                      className="bg-white/[0.03] border border-white/10 rounded-2xl p-5"
+                    >
+                      <h3 className="font-bold text-lg">
+                        {candidate.candidate_name || "Unknown Candidate"}
+                      </h3>
+
+                      <p className="text-sm text-gray-400 mt-1">
+                        {candidate.candidate_email || "Email not available"}
+                      </p>
+
+                      <div className="mt-5 space-y-3">
+                        <p className="text-purple-300 font-semibold">
+                          Overall Score:{" "}
+                          {candidate.evaluation?.overall_score ?? "N/A"}/100
+                        </p>
+
+                        <p className="text-sm text-gray-300">
+                          Technical Knowledge:{" "}
+                          {candidate.evaluation?.technical_knowledge_score ??
+                            "N/A"}
+                          /100
+                        </p>
+
+                        <p className="text-sm text-gray-300">
+                          Communication:{" "}
+                          {candidate.evaluation?.communication_score ?? "N/A"}
+                          /100
+                        </p>
+                      </div>
+
+                      <div className="mt-5">
+                        <h4 className="text-green-400 font-semibold text-sm mb-2">
+                          Strengths
+                        </h4>
+                        <ul className="text-sm text-gray-300 space-y-1">
+                          {(candidate.evaluation?.strengths || []).map(
+                            (item, index) => (
+                              <li key={index}>• {item}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+
+                      <div className="mt-5">
+                        <h4 className="text-red-400 font-semibold text-sm mb-2">
+                          Weaknesses
+                        </h4>
+                        <ul className="text-sm text-gray-300 space-y-1">
+                          {(candidate.evaluation?.weaknesses || []).map(
+                            (item, index) => (
+                              <li key={index}>• {item}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </>
         )}
       </div>

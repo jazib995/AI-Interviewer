@@ -1,7 +1,8 @@
 
 import os
 import secrets
-from datetime import datetime, timezone
+from datetime import datetime, timezone,timedelta
+from httpcore2 import request
 from openai import OpenAI
 from dotenv import load_dotenv
 from fastapi import FastAPI,HTTPException
@@ -68,6 +69,8 @@ class InterviewRequest(BaseModel):
     role: str
     interview_type: str
     difficulty: str
+    invitation_token: str | None = None
+    job_id: str | None = None
 class JobRequest(BaseModel):
     title: str
     department: str
@@ -80,7 +83,54 @@ class JobRequest(BaseModel):
 # Start a new interview
 @app.post("/interview/start")
 def start_interview(request: InterviewRequest):
+        # Validate candidate invitation
+       # Validate candidate invitation
+    if request.job_id and not request.invitation_token:
+        raise HTTPException(
+            status_code=403,
+            detail="A valid invitation token is required."
+        )
 
+    if request.invitation_token:
+
+        invitation = invitations_collection.find_one({
+            "token": request.invitation_token,
+            "job_id": request.job_id,
+            "status": "active",
+            "expires_at": {
+                "$gt": datetime.now(timezone.utc)
+            }
+        })
+
+        if not invitation:
+            raise HTTPException(
+                status_code=403,
+                detail="Invalid, expired, or already used invitation."
+            )
+
+        job = jobs_collection.find_one({
+            "_id": ObjectId(invitation["job_id"])
+        })
+
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Associated job not found."
+            )
+        invitations_collection.update_one(
+    {
+        "token": request.invitation_token,
+        "status": "active",
+        "started_at": {
+            "$exists": False
+        }
+    },
+    {
+        "$set": {
+            "started_at": datetime.now(timezone.utc)
+        }
+    }
+)
     prompt = f"""
 You are a professional recruitment interviewer.
 
@@ -151,6 +201,7 @@ class InterviewSubmission(BaseModel):
     job_id: str | None = None
     candidate_name: str | None = None
     candidate_email: str | None = None
+    invitation_token: str | None = None
 
 
 @app.post("/interview/submit")
@@ -165,7 +216,57 @@ def submit_answer(request: AnswerSubmission):
 @app.post("/interview/submit-complete")
 def submit_complete_interview(request: InterviewSubmission):
 
+    invitation_claimed = False
+    interview_saved = False
+
     try:
+        # Validate invitation for job applicants
+        if request.job_id and not request.invitation_token:
+            raise HTTPException(
+                status_code=403,
+                detail="A valid invitation token is required."
+            )
+
+        # Claim invitation so it cannot be submitted twice
+        if request.invitation_token:
+            invitation_filter = {
+            "token": request.invitation_token,
+            "job_id": request.job_id,
+            "status": "active",
+            "$or": [
+            {"expires_at": {
+                "$gt": datetime.now(timezone.utc)}},
+            {"started_at": {
+                "$exists": True}} ]
+            }
+            invitation = invitations_collection.find_one(
+                invitation_filter
+            )
+
+            if not invitation:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Invalid or already used invitation."
+                )
+
+            claim_result = invitations_collection.update_one(
+                invitation_filter,
+                {
+                    "$set": {
+                        "status": "processing",
+                        "processing_at": datetime.now(timezone.utc)
+                    }
+                }
+            )
+
+            if claim_result.modified_count != 1:
+                raise HTTPException(
+                    status_code=403,
+                    detail="This invitation has already been used."
+                )
+
+            invitation_claimed = True
+
         # Convert answers into a format AI can understand
         answers = [
             answer.model_dump()
@@ -196,6 +297,19 @@ def submit_complete_interview(request: InterviewSubmission):
 
         # Save everything in MongoDB
         result = interviews_collection.insert_one(interview_data)
+        interview_saved = True
+
+        # Mark invitation as permanently used
+        if invitation_claimed:
+            invitations_collection.update_one(
+                {"token": request.invitation_token},
+                {
+                    "$set": {
+                        "status": "used",
+                        "used_at": datetime.now(timezone.utc)
+                    }
+                }
+            )
 
         return {
             "message": "Interview evaluated and saved successfully!",
@@ -205,12 +319,28 @@ def submit_complete_interview(request: InterviewSubmission):
             "status": "completed"
         }
 
+    except HTTPException:
+        raise
+
     except Exception as error:
+
+        # Restore invitation if interview was not saved
+        if invitation_claimed and not interview_saved:
+            invitations_collection.update_one(
+                {
+                    "token": request.invitation_token,
+                    "status": "processing"
+                },
+                {
+                    "$set": {"status": "active"},
+                    "$unset": {"processing_at": ""}
+                }
+            )
+
         raise HTTPException(
             status_code=500,
             detail=f"Interview evaluation failed: {error}"
         )
-
 @app.get("/interviews")
 def get_interviews():
 
@@ -339,6 +469,7 @@ def generate_job_invite(job_id: str):
         "token": token,
         "job_id": job_id,
         "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
         "status": "active"
     }
 
@@ -355,7 +486,10 @@ def validate_invitation(token: str):
 
     invitation = invitations_collection.find_one({
         "token": token,
-        "status": "active"
+        "status": "active",
+        "expires_at": {
+        "$gt": datetime.now(timezone.utc)
+    }
     })
 
     if not invitation:
@@ -373,7 +507,6 @@ def validate_invitation(token: str):
             status_code=404,
             detail="Associated job not found"
         )
-
     return {
         "valid": True,
         "job": {

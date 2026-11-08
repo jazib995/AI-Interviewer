@@ -14,6 +14,7 @@ function InterviewWorkspaceContent() {
   const jobId = searchParams.get("job_id");
   const candidateName = searchParams.get("candidate_name");
   const candidateEmail = searchParams.get("candidate_email");
+  const invitationToken = searchParams.get("token");
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [backendResponse, setBackendResponse] = useState(null);
@@ -50,6 +51,8 @@ function InterviewWorkspaceContent() {
             role,
             interview_type: interviewType,
             difficulty,
+            job_id: jobId,
+            invitation_token: invitationToken,
           }),
         });
 
@@ -67,7 +70,7 @@ function InterviewWorkspaceContent() {
     }
 
     startInterview();
-  }, [role, interviewType, difficulty]);
+  }, [role, interviewType, difficulty, invitationToken]);
 
   // Stop microphone when leaving the page
   useEffect(() => {
@@ -212,6 +215,7 @@ function InterviewWorkspaceContent() {
               job_id: jobId,
               candidate_name: candidateName,
               candidate_email: candidateEmail,
+              invitation_token: invitationToken,
             }),
           },
         );
@@ -651,29 +655,23 @@ function InterviewWorkspaceContent() {
           </a>
         </div>
       </footer>
-            {/* Interview completion screen */}
+      {/* Interview completion screen */}
       {isFinished && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#080511]/95 px-4 py-8 backdrop-blur-xl">
-
           <div className="relative my-auto w-full max-w-3xl overflow-hidden rounded-3xl border border-purple-400/20 bg-gradient-to-br from-[#1b1032] via-[#130d24] to-[#0c0917] shadow-2xl shadow-purple-950/50">
-
             {/* Decorative background */}
             <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-purple-600/20 blur-[100px]" />
             <div className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-violet-600/20 blur-[100px]" />
 
             <div className="relative p-6 sm:p-10">
-
               {/* Success icon */}
               <div className="text-center">
-
                 <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
-
                   <div className="absolute inset-0 animate-ping rounded-full bg-purple-500/10" />
 
                   <div className="relative flex h-20 w-20 animate-bounce items-center justify-center rounded-3xl border border-purple-400/30 bg-gradient-to-br from-purple-500/30 to-violet-700/20 text-4xl shadow-lg shadow-purple-500/20">
                     🎉
                   </div>
-
                 </div>
 
                 <p className="mt-7 text-xs font-bold uppercase tracking-[0.3em] text-purple-300">
@@ -685,16 +683,14 @@ function InterviewWorkspaceContent() {
                 </h2>
 
                 <p className="mt-4 text-base leading-7 text-gray-400">
-                  Well done{candidateName ? `, ${candidateName}` : ""}!
-                  You've successfully completed your AI-powered interview.
-                  Take a moment to appreciate your effort.
+                  Well done{candidateName ? `, ${candidateName}` : ""}! You've
+                  successfully completed your AI-powered interview. Take a
+                  moment to appreciate your effort.
                 </p>
-
               </div>
 
               {/* Interview summary */}
               <div className="mt-9 grid grid-cols-1 gap-4 sm:grid-cols-3">
-
                 <div className="rounded-2xl border border-purple-400/20 bg-purple-500/[0.08] p-5 text-center">
                   <p className="text-xs font-medium text-gray-400">
                     Questions Answered
@@ -721,37 +717,28 @@ function InterviewWorkspaceContent() {
                     {difficulty}
                   </p>
                 </div>
-
               </div>
 
               {/* Job details */}
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-
                 <p className="text-xs font-bold uppercase tracking-wider text-purple-300">
                   Interview Details
                 </p>
 
-                <h3 className="mt-3 text-lg font-bold text-white">
-                  {role}
-                </h3>
+                <h3 className="mt-3 text-lg font-bold text-white">{role}</h3>
 
                 <p className="mt-1 text-sm text-gray-400">
                   Your interview responses have been successfully submitted.
                 </p>
-
               </div>
 
               {/* Thank you message */}
               <div className="mt-6 rounded-2xl border border-purple-400/20 bg-gradient-to-r from-purple-500/10 to-violet-500/[0.04] p-6">
-
                 <div className="flex items-start gap-4">
-
                   <div className="text-2xl">💜</div>
 
                   <div>
-                    <h3 className="font-bold text-white">
-                      What's Next?
-                    </h3>
+                    <h3 className="font-bold text-white">What's Next?</h3>
 
                     <p className="mt-2 text-sm leading-7 text-gray-400">
                       Thank you for taking the time to complete this interview.
@@ -760,14 +747,11 @@ function InterviewWorkspaceContent() {
                       the team will contact you regarding the next steps.
                     </p>
                   </div>
-
                 </div>
-
               </div>
 
               {/* Question and answer review */}
               <div className="mt-9">
-
                 <div className="mb-5">
                   <h3 className="text-xl font-bold text-white">
                     Your Interview Responses
@@ -779,16 +763,12 @@ function InterviewWorkspaceContent() {
                 </div>
 
                 <div className="max-h-72 space-y-4 overflow-y-auto pr-2">
-
                   {submittedAnswers.map((item, index) => (
-
                     <div
                       key={index}
                       className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition hover:border-purple-400/30"
                     >
-
                       <div className="flex items-center justify-between gap-3">
-
                         <span className="text-xs font-bold uppercase tracking-wider text-purple-300">
                           Question {index + 1}
                         </span>
@@ -796,7 +776,6 @@ function InterviewWorkspaceContent() {
                         <span className="rounded-full bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-400">
                           Answer Submitted
                         </span>
-
                       </div>
 
                       <p className="mt-3 text-sm font-semibold leading-6 text-white">
@@ -804,7 +783,6 @@ function InterviewWorkspaceContent() {
                       </p>
 
                       <div className="mt-4 rounded-xl border border-white/5 bg-black/20 p-4">
-
                         <p className="mb-2 text-xs font-bold uppercase tracking-wider text-gray-500">
                           Your Answer
                         </p>
@@ -812,20 +790,14 @@ function InterviewWorkspaceContent() {
                         <p className="whitespace-pre-wrap text-sm leading-7 text-gray-300">
                           {item.answer || "No answer provided."}
                         </p>
-
                       </div>
-
                     </div>
-
                   ))}
-
                 </div>
-
               </div>
 
               {/* Footer */}
               <div className="mt-9 border-t border-white/10 pt-7 text-center">
-
                 <p className="text-sm text-gray-500">
                   Your next opportunity could be just around the corner.
                 </p>
@@ -840,15 +812,11 @@ function InterviewWorkspaceContent() {
                 <p className="mt-5 text-xs text-gray-600">
                   Powered by AI Interviewer
                 </p>
-
               </div>
-
             </div>
           </div>
         </div>
       )}
-
-      
     </main>
   );
 }
