@@ -12,12 +12,19 @@ from pymongo import MongoClient
 from bson import ObjectId
 import json
 from ai_service import generate_ai_response, evaluate_interview
+from pathlib import Path
+from fastapi import UploadFile, File, Form
+import uuid
+from fastapi.responses import FileResponse
 load_dotenv()
 client = MongoClient("mongodb://localhost:27017/")
 db = client["ai_interviewer"]
 interviews_collection = db["interviews"]
 jobs_collection = db["jobs"]
 invitations_collection = db["invitations"]
+applications_collection = db["applications"]
+RESUME_DIR = Path(__file__).resolve().parent / "uploads" / "resumes"
+RESUME_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
     title="AI Interviewer API",
@@ -70,7 +77,7 @@ class InterviewRequest(BaseModel):
     interview_type: str
     difficulty: str
     invitation_token: str | None = None
-    job_id: str | None = None
+    
 class JobRequest(BaseModel):
     title: str
     department: str
@@ -78,6 +85,8 @@ class JobRequest(BaseModel):
     requirements: str
     location: str
     job_type: str
+class ApplicationStatusUpdate(BaseModel):
+    status: str
 
 
 # Start a new interview
@@ -408,7 +417,9 @@ def create_job(request: JobRequest):
         )
 @app.get("/jobs")
 def get_jobs():
-    jobs = list(jobs_collection.find().sort("_id", -1))
+    jobs = list(
+    jobs_collection.find({"status": "active"}).sort("_id", -1)
+)
 
     for job in jobs:
         job["id"] = str(job["_id"])
@@ -418,6 +429,194 @@ def get_jobs():
         "jobs": jobs,
         "total": len(jobs)
     }
+
+@app.get("/jobs/{job_id}")
+def get_job(job_id: str):
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid job ID"
+        )
+
+    job = jobs_collection.find_one({
+        "_id": ObjectId(job_id),
+        "status": "active"
+    })
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+
+    job["id"] = str(job["_id"])
+    del job["_id"]
+
+    return {"job": job}
+
+@app.post("/applications")
+def submit_application(
+    job_id: str = Form(...),
+    full_name: str = Form(...),
+    email: str = Form(...),
+    phone: str = Form(...),
+    cover_letter: str = Form(""),
+    resume: UploadFile = File(...)
+):
+    # Validate job ID
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid job ID"
+        )
+
+    # Check whether job exists and is active
+    job = jobs_collection.find_one({
+        "_id": ObjectId(job_id),
+        "status": "active"
+    })
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job is not available"
+        )
+
+    # Validate candidate information
+    if not full_name.strip() or not email.strip() or not phone.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="All personal information fields are required"
+        )
+
+    # Validate resume extension
+    extension = Path(resume.filename or "").suffix.lower()
+
+    allowed_extensions = [".pdf", ".doc", ".docx"]
+
+    if extension not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail="Only PDF, DOC and DOCX files are allowed"
+        )
+
+    # Read resume and enforce 5 MB limit
+    file_content = resume.file.read(5 * 1024 * 1024 + 1)
+
+    if len(file_content) > 5 * 1024 * 1024:
+        raise HTTPException(
+            status_code=400,
+            detail="Resume must be smaller than 5 MB"
+        )
+
+    if not file_content:
+        raise HTTPException(
+            status_code=400,
+            detail="Uploaded resume is empty"
+        )
+
+    # Generate unique filename
+    unique_filename = f"{uuid.uuid4().hex}{extension}"
+
+    resume_path = RESUME_DIR / unique_filename
+
+    # Save resume
+    with open(resume_path, "wb") as file:
+        file.write(file_content)
+
+    # Save application in MongoDB
+    application = {
+        "job_id": job_id,
+        "candidate_name": full_name.strip(),
+        "candidate_email": email.strip().lower(),
+        "phone": phone.strip(),
+        "cover_letter": cover_letter.strip(),
+        "resume": {
+            "filename": resume.filename,
+            "stored_filename": unique_filename,
+            "content_type": resume.content_type,
+            "size": len(file_content)
+        },
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc)
+    }
+
+    try:
+        result = applications_collection.insert_one(application)
+    except Exception:
+        resume_path.unlink(missing_ok=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save application"
+        )
+
+    return {
+        "message": "Application submitted successfully",
+        "application_id": str(result.inserted_id)
+    }
+
+@app.get("/applications")
+def get_all_applications():
+
+    applications = list(
+        applications_collection.find().sort("_id", -1)
+    )
+
+    for application in applications:
+
+        application["id"] = str(application["_id"])
+        del application["_id"]
+
+        # Get the job associated with this application
+        job = jobs_collection.find_one({
+            "_id": ObjectId(application["job_id"])
+        })
+
+        if job:
+            application["job_title"] = job.get("title", "Unknown Job")
+        else:
+            application["job_title"] = "Job no longer available"
+
+    return {
+        "applications": applications,
+        "total": len(applications)
+    }
+
+
+@app.get("/jobs/{job_id}/applications")
+def get_job_applications(job_id: str):
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid job ID"
+        )
+
+    job = jobs_collection.find_one({
+        "_id": ObjectId(job_id)
+    })
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job not found"
+        )
+
+    applications = list(
+        applications_collection.find(
+            {"job_id": job_id}
+        ).sort("_id", -1)
+    )
+
+    for application in applications:
+        application["id"] = str(application["_id"])
+        del application["_id"]
+
+    return {
+        "applications": applications,
+        "total": len(applications)
+    }
+
+
 @app.get("/jobs/{job_id}/interviews")
 def get_job_interviews(job_id: str):
     if not ObjectId.is_valid(job_id):
@@ -481,6 +680,85 @@ def generate_job_invite(job_id: str):
         "job_id": job_id,
         "invite_link": f"http://localhost:3000/interview/invite/{token}"
     }
+
+@app.get("/applications/{application_id}/resume")
+def view_application_resume(application_id: str):
+
+    if not ObjectId.is_valid(application_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid application ID"
+        )
+
+    application = applications_collection.find_one({
+        "_id": ObjectId(application_id)
+    })
+
+    if not application:
+        raise HTTPException(
+            status_code=404,
+            detail="Application not found"
+        )
+
+    resume = application.get("resume", {})
+    stored_filename = resume.get("stored_filename")
+
+    if not stored_filename:
+        raise HTTPException(
+            status_code=404,
+            detail="Resume not found"
+        )
+
+    resume_path = (RESUME_DIR / stored_filename).resolve()
+
+    if resume_path.parent != RESUME_DIR.resolve() or not resume_path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="Resume file not found"
+        )
+
+    return FileResponse(
+    path=str(resume_path),
+    media_type=resume.get("content_type") or "application/octet-stream",
+    content_disposition_type="inline"
+)
+    
+@app.patch("/applications/{application_id}/status")
+def update_application_status(
+    application_id: str,
+    request: ApplicationStatusUpdate
+):
+    allowed_statuses = ["pending", "shortlisted", "rejected"]
+
+    if not ObjectId.is_valid(application_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid application ID"
+        )
+
+    if request.status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid application status"
+        )
+
+    result = applications_collection.update_one(
+        {"_id": ObjectId(application_id)},
+        {"$set": {"status": request.status}}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Application not found"
+        )
+
+    return {
+        "message": "Application status updated successfully",
+        "status": request.status
+    }
+
+
 @app.get("/interview/invite/{token}")
 def validate_invitation(token: str):
 
