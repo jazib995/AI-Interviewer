@@ -13,6 +13,8 @@ function InvitationContent() {
   const [starting, setStarting] = useState(false);
   const [candidateName, setCandidateName] = useState("");
   const [candidateEmail, setCandidateEmail] = useState("");
+  const [candidate, setCandidate] = useState(null);
+  const [applicationId, setApplicationId] = useState(null);
 
   useEffect(() => {
     async function validateInvitation() {
@@ -30,6 +32,14 @@ function InvitationContent() {
         }
 
         setJob(data.job);
+        
+
+        setCandidate({
+          name: data.candidate_name,
+          email: data.candidate_email,
+        });
+
+        setApplicationId(data.application_id);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -56,7 +66,7 @@ function InvitationContent() {
     setStarting(true);
 
     router.push(
-      `/interview/workspace?role=${encodeURIComponent(job.title)}&type=Technical&difficulty=Intermediate&job_id=${encodeURIComponent(job.id)}&candidate_name=${encodeURIComponent(candidateName.trim())}&candidate_email=${encodeURIComponent(candidateEmail.trim())}&token=${encodeURIComponent(token)}`,
+      `/interview/workspace?role=${encodeURIComponent(job.title)}&type=Technical&difficulty=Intermediate&job_id=${encodeURIComponent(job.id)}&candidate_name=${encodeURIComponent(candidateName.trim())}&candidate_email=${encodeURIComponent(candidateEmail.trim())}&token=${encodeURIComponent(token)}&application_id=${encodeURIComponent(applicationId || "")}`,
     );
   }
 

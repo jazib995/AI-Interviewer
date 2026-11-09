@@ -76,6 +76,7 @@ class InterviewRequest(BaseModel):
     role: str
     interview_type: str
     difficulty: str
+    job_id: str | None = None
     invitation_token: str | None = None
     
 class JobRequest(BaseModel):
@@ -208,6 +209,7 @@ class InterviewSubmission(BaseModel):
     difficulty: str
     answers: list[AnswerSubmission]
     job_id: str | None = None
+    application_id: str | None = None
     candidate_name: str | None = None
     candidate_email: str | None = None
     invitation_token: str | None = None
@@ -298,6 +300,7 @@ def submit_complete_interview(request: InterviewSubmission):
             "candidate_name": request.candidate_name,
             "candidate_email": request.candidate_email,
             "job_id": request.job_id,
+            "application_id": request.application_id,
             "answers": answers,
             "total_answers": len(answers),
             "evaluation": evaluation,
@@ -389,6 +392,28 @@ def get_interview(interview_id: str):
     del interview["_id"]
 
     return interview
+
+@app.get("/applications/{application_id}/interview")
+def get_application_interview(application_id: str):
+
+    if not ObjectId.is_valid(application_id):
+        raise HTTPException(status_code=400, detail="Invalid application ID")
+
+    interview = interviews_collection.find_one(
+        {"application_id": application_id},
+        sort=[("_id", -1)]
+    )
+
+    if not interview:
+        raise HTTPException(
+            status_code=404,
+            detail="No completed interview found for this application"
+        )
+
+    interview["id"] = str(interview.pop("_id"))
+
+    return interview
+
 @app.post("/jobs")
 def create_job(request: JobRequest):
     try:
@@ -681,6 +706,60 @@ def generate_job_invite(job_id: str):
         "invite_link": f"http://localhost:3000/interview/invite/{token}"
     }
 
+@app.post("/applications/{application_id}/invite")
+def generate_application_invite(application_id: str):
+
+    if not ObjectId.is_valid(application_id):
+        raise HTTPException(status_code=400, detail="Invalid application ID")
+
+    application = applications_collection.find_one({
+        "_id": ObjectId(application_id)
+    })
+
+    if not application:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    if application.get("status") != "shortlisted":
+        raise HTTPException(
+            status_code=400,
+            detail="Only shortlisted applications can receive invitations"
+        )
+
+    job_id = application.get("job_id")
+
+    if not ObjectId.is_valid(job_id):
+        raise HTTPException(status_code=400, detail="Invalid job ID")
+
+    job = jobs_collection.find_one({
+        "_id": ObjectId(job_id)
+    })
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    token = secrets.token_urlsafe(24)
+
+    invitation = {
+        "token": token,
+        "job_id": job_id,
+        "application_id": application_id,
+        "candidate_name": application.get("candidate_name"),
+        "candidate_email": application.get("candidate_email"),
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+        "status": "active"
+    }
+
+    invitations_collection.insert_one(invitation)
+
+    return {
+        "message": "Application invitation generated successfully",
+        "token": token,
+        "job_id": job_id,
+        "application_id": application_id,
+        "invite_link": f"http://localhost:3000/interview/invite/{token}"
+    }
+
 @app.get("/applications/{application_id}/resume")
 def view_application_resume(application_id: str):
 
@@ -787,13 +866,16 @@ def validate_invitation(token: str):
         )
     return {
         "valid": True,
+        "application_id": invitation.get("application_id"),
+        "candidate_name": invitation.get("candidate_name"),
+        "candidate_email": invitation.get("candidate_email"),
         "job": {
-            "id": str(job["_id"]),
-            "title": job["title"],
-            "department": job["department"],
-            "description": job["description"],
-            "requirements": job["requirements"],
-            "location": job["location"],
-            "job_type": job["job_type"]
-        }
+          "id": str(job["_id"]),
+          "title": job["title"],
+          "department": job["department"],
+          "description": job["description"],
+          "requirements": job["requirements"],
+          "location": job["location"],
+          "job_type": job["job_type"]
+    }
     }

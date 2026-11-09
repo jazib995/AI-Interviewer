@@ -14,6 +14,7 @@ function InterviewWorkspaceContent() {
   const candidateName = searchParams.get("candidate_name");
   const candidateEmail = searchParams.get("candidate_email");
   const invitationToken = searchParams.get("token");
+  const applicationId = searchParams.get("application_id");
 
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [backendResponse, setBackendResponse] = useState(null);
@@ -261,6 +262,7 @@ function InterviewWorkspaceContent() {
               difficulty,
               answers: updatedAnswers,
               job_id: jobId,
+              application_id: applicationId,
               candidate_name: candidateName,
               candidate_email: candidateEmail,
               invitation_token: invitationToken,

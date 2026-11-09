@@ -7,6 +7,8 @@ export default function ApplicationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedJob, setSelectedJob] = useState("all");
+  const [selectedInterview, setSelectedInterview] = useState(null);
+  const [showInterviewModal, setShowInterviewModal] = useState(false);
 
   useEffect(() => {
     async function fetchApplications() {
@@ -67,6 +69,48 @@ export default function ApplicationsPage() {
             : application,
         ),
       );
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function generateApplicationInvite(applicationId) {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/applications/${applicationId}/invite`,
+        {
+          method: "POST",
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Failed to generate invitation.");
+      }
+
+      await navigator.clipboard.writeText(data.invite_link);
+
+      alert(`Invitation generated and copied!\n\n${data.invite_link}`);
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  async function viewInterviewResults(applicationId) {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/applications/${applicationId}/interview`,
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Interview results not found.");
+      }
+
+      setSelectedInterview(data);
+      setShowInterviewModal(true);
     } catch (err) {
       alert(err.message);
     }
@@ -249,7 +293,6 @@ export default function ApplicationsPage() {
                       {application.job_title}
                     </p>
                   </div>
-
                   <div>
                     <p className="text-xs uppercase tracking-wider text-gray-500 mb-2">
                       Application Date
@@ -270,12 +313,189 @@ export default function ApplicationsPage() {
                       <span>↗</span>
                       View CV
                     </a>
+
+                    {application.status === "shortlisted" && (
+                      <button
+                        onClick={() =>
+                          generateApplicationInvite(application.id)
+                        }
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600/30 hover:border-purple-400 transition-all text-sm font-medium"
+                      >
+                        ✉ Invite to Interview
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => viewInterviewResults(application.id)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/10 border border-cyan-400/30 text-cyan-300 hover:bg-cyan-500/20 transition-all text-sm font-medium"
+                    >
+                      View Interview Results
+                    </button>
                   </div>
                 </div>
               </div>
             ))}
         </div>
       </div>
+      {showInterviewModal && selectedInterview && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-cyan-400/20 rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <h2 className="text-2xl font-bold text-white">
+                  Interview Results
+                </h2>
+                <p className="text-gray-400 text-sm mt-1">
+                  AI-powered candidate evaluation
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowInterviewModal(false)}
+                className="text-gray-400 hover:text-white text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mb-6">
+              <h3 className="text-xl font-semibold text-white">
+                {selectedInterview.candidate_name}
+              </h3>
+              <p className="text-gray-400">
+                {selectedInterview.role} · {selectedInterview.interview_type}{" "}
+                Interview
+              </p>
+              <p className="text-gray-500 text-sm mt-1">
+                Difficulty: {selectedInterview.difficulty}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+              {[
+                {
+                  label: "Overall Score",
+                  score: selectedInterview.evaluation.overall_score,
+                },
+                {
+                  label: "Technical Knowledge",
+                  score: selectedInterview.evaluation.technical_knowledge_score,
+                },
+                {
+                  label: "Communication",
+                  score: selectedInterview.evaluation.communication_score,
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="bg-[#1f2937] rounded-xl p-5 border border-gray-700"
+                >
+                  <p className="text-gray-400 text-sm">{item.label}</p>
+
+                  <p className="text-3xl font-bold text-cyan-400 mt-2">
+                    {item.score}/100
+                  </p>
+
+                  <div className="w-full bg-gray-700 rounded-full h-2 mt-4">
+                    <div
+                      className="bg-cyan-400 h-2 rounded-full"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, Number(item.score) || 0))}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-[#1f2937] rounded-xl p-5 mb-6">
+              <h3 className="text-white font-semibold text-lg mb-3">
+                AI Evaluation Summary
+              </h3>
+
+              <p className="text-gray-300 leading-7">
+                {selectedInterview.evaluation.summary}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+              <div className="bg-[#1f2937] rounded-xl p-5">
+                <h3 className="text-green-400 font-semibold mb-3">Strengths</h3>
+
+                {selectedInterview.evaluation.strengths?.length > 0 ? (
+                  <ul className="list-disc list-inside text-gray-300 space-y-2">
+                    {selectedInterview.evaluation.strengths.map(
+                      (item, index) => (
+                        <li key={index}>{item}</li>
+                      ),
+                    )}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 text-sm">
+                    No strengths identified.
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-[#1f2937] rounded-xl p-5">
+                <h3 className="text-red-400 font-semibold mb-3">Weaknesses</h3>
+
+                {selectedInterview.evaluation.weaknesses?.length > 0 ? (
+                  <ul className="list-disc list-inside text-gray-300 space-y-2">
+                    {selectedInterview.evaluation.weaknesses.map(
+                      (item, index) => (
+                        <li key={index}>{item}</li>
+                      ),
+                    )}
+                  </ul>
+                ) : (
+                  <p className="text-gray-500 text-sm">
+                    No weaknesses identified.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-white font-semibold text-lg mb-4">
+                Questions & Candidate Answers
+              </h3>
+
+              <div className="space-y-4">
+                {selectedInterview.answers?.map((item, index) => (
+                  <div
+                    key={index}
+                    className="bg-[#1f2937] rounded-xl p-5 border border-gray-700"
+                  >
+                    <p className="text-cyan-400 text-sm font-semibold mb-2">
+                      Question {index + 1}
+                    </p>
+
+                    <p className="text-white mb-4">{item.question}</p>
+
+                    <p className="text-gray-400 text-sm mb-1">
+                      Candidate's Answer
+                    </p>
+
+                    <p className="text-gray-300">
+                      {item.answer || "No answer provided."}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end mt-8">
+              <button
+                onClick={() => setShowInterviewModal(false)}
+                className="px-6 py-3 rounded-xl bg-cyan-500 text-black font-semibold hover:bg-cyan-400 transition"
+              >
+                Close Results
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
